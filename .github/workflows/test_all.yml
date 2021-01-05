@@ -1,0 +1,43 @@
+# This is a basic workflow to help you get started with Actions
+
+name: test_all
+
+# Controls when the action will run.
+on:
+  # Triggers the workflow on push or pull request events but only for the master branch
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  test_all:
+    if: ${{ false }}
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        provider: ["gyan.dev", "BtbN"]
+        version: ["", "4.3.1", "n4.3.1-29", "N-100546"]
+        build_date: ["", "2021-01-01", "2020-11-19", "2020-10-01"]
+        commit_id: ["", "g2c6f532e0a", "g89daac5fe2"]
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+
+      - uses: pzhlkj6612/actions-download-file@master
+        id: downloadFFMPEG
+        with:
+          provider: "${{ matrix.provider }}"
+          filename_version: "${{ matrix.version }}"
+          filename_build_date: "${{ matrix.build_date }}"
+          filename_commit_id: "${{ matrix.commit_id }}"
+          target: "."
+
+      - name: File name?
+        run: echo "${{ steps.downloadFFMPEG.outputs.filename }}"

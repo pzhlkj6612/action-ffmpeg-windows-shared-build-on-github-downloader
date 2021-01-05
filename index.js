@@ -1,60 +1,270 @@
 const core = require("@actions/core");
-const github = require("@actions/github");
+// const github = require("@actions/github"); // Why does github.token not work???
 const fs = require("fs");
 const path = require("path");
 const fetch = require("node-fetch");
+const { graphql } = require("@octokit/graphql");
 
-function getFilenameFromUrl(url) {
-  const u = new URL(url);
-  const pathname = u.pathname;
-  const pathClips = pathname.split("/");
-  const filenameWithArgs = pathClips[pathClips.length - 1];
-  return filenameWithArgs.replace(/\?.*/, "");
-}
+// https://docs.github.com/en/free-pro-team@latest/actions/creating-actions/creating-a-javascript-action
+
+const header = {
+  Accept: "application/vnd.github.v3+json"
+};
+
+const ffmpeg_urls = {
+  "BtbN": {
+    url: "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases",
+    regex: /ffmpeg-((n(?<version_n>[0-9\.]+)-[0-9]+|N-(?<version_N>[0-9]+)))-(?<commit_id>[a-z0-9]+)-win64-gpl-shared-?([0-9\.]+)?(?<!vulkan)\.zip/,
+    allowedOptions: [
+      "version", // Includes two types of versions.
+      "commit_id"
+    ],
+    graphqlParams: {
+      owner: "BtbN",
+      name: "FFmpeg-Builds"
+    }
+  },
+  "gyan.dev": {
+    url: "https://api.github.com/repos/GyanD/codexffmpeg/releases",
+    regex: /ffmpeg-(?<version>.+?)-(?<date>.+)-full_build-shared\.zip/,
+    allowedOptions: [
+      "version",
+      "date"
+    ],
+    graphqlParams: {
+      owner: "GyanD",
+      name: "codexffmpeg"
+    }
+  }
+};
+
+const MAXIMUM_RESULT_COUNT_PER_PAGE = 28;
 
 async function main() {
   try {
-    const text = core.getInput("url");
+    const token = core.getInput("github_token", { required: true }); // It's secret.
+
+    const providerName = core.getInput("provider", { required: true });
+    const expectedVersion = core.getInput("filename_version");
+    const expectedcommitId = core.getInput("filename_commit_id");
+    const expectedDate = core.getInput("filename_build_date");
     const target = core.getInput("target");
-    let autoMatch = core.getInput("auto-match");
-    if (["false", "0"].includes(autoMatch.toLowerCase().trim())) {
-      autoMatch = false;
-    } else {
-      autoMatch = true;
+
+    core.debug(`provider = ${providerName}`);
+    core.debug(`filename_version = ${expectedVersion}`);
+    core.debug(`filename_commit_id = ${expectedcommitId}`);
+    core.debug(`filename_build_date = ${expectedDate}`);
+    core.debug(`target = ${target}`);
+
+    const resolvedTarget = path.resolve(target);
+    core.debug(`resolvedTarget = ${resolvedTarget}`);
+
+    const providerInfo = ffmpeg_urls[providerName];
+    if (!providerInfo)
+      throw new Error(`No such provider: "${providerName}".`);
+
+    // https://stackoverflow.com/questions/42467500/how-to-get-the-total-release-number-of-github-projects-using-api
+    let perPageResultNum, maximumPageNum;
+    {
+      const { repository } = await graphql(
+        `
+          {
+            repository(owner: "${providerInfo["graphqlParams"]["owner"]}", name: "${providerInfo["graphqlParams"]["name"]}") {
+              refs(refPrefix: "refs/tags/", first: 0) {
+                totalCount
+              }
+            }
+          }
+        `,
+        {
+          headers: {
+            Authorization: `token ${token}`,
+          },
+        }
+      );
+      core.debug(`repository = ${JSON.stringify(repository)}`);
+      const releaseCount = repository["refs"]["totalCount"];
+      core.debug(`releaseCount: ${releaseCount}`);
+      perPageResultNum = releaseCount < MAXIMUM_RESULT_COUNT_PER_PAGE ? releaseCount : MAXIMUM_RESULT_COUNT_PER_PAGE;
+      maximumPageNum = Math.ceil(releaseCount / MAXIMUM_RESULT_COUNT_PER_PAGE);
     }
-    const url = (() => {
-      if (!autoMatch) return text;
-      if (autoMatch) {
-        const match = text.match(/\((.*)\)/);
-        if (match === null) return "";
-        return match[1] || "";
+    core.debug(`perPageResultNum: ${perPageResultNum}`);
+    core.debug(`maximumPageNum: ${maximumPageNum}`);
+
+    const disallowedOptions = [];
+    {
+      if (expectedVersion === "") {
+        disallowedOptions.push("version");
       }
-    })();
-    if (url.trim() === "") {
-      core.setFailed("Failed to find a URL.");
-      return;
+      if (expectedcommitId === "") {
+        disallowedOptions.push("commit_id");
+      } else {
+        if (!(providerInfo.allowedOptions.includes("commit_id"))) {
+          throw new Error(`Provider "${providerName}" does not support the condition "filename_commit_id".`);
+        }
+      }
+      if (expectedDate === "") {
+        disallowedOptions.push("date");
+      } else {
+        if (!(providerInfo.allowedOptions.includes("date")))
+          throw new Error(`Provider "${providerName}" does not support the condition "filename_build_date".`);
+      }
     }
-    console.log(`URL found: ${url}`);
-    try {
-      fs.mkdirSync(target, {
-        recursive: true,
-      });
-    } catch (e) {
-      core.setFailed(`Failed to create target directory ${target}: ${e}`);
-      return;
+    core.debug(`disallowedOptions = [${disallowedOptions}]`)
+
+    const allowedOptions = providerInfo.allowedOptions.filter((value, index, arr) =>
+      !disallowedOptions.includes(value)
+    );
+    core.debug(`allowedOptions = [${allowedOptions}]`)
+
+    const findLatestSharedBuild = allowedOptions.length === 0 ? true : false;
+    core.debug(`findLatestSharedBuild = ${findLatestSharedBuild}`);
+
+    const regex = new RegExp(providerInfo.regex, 'i');
+    let foundUrl = false;
+    let packageDownloadUrl = "";
+    let fileName = "";
+
+    for (let pageNum = 1; pageNum <= maximumPageNum; pageNum++) {
+      const releasePageUrl = `${providerInfo.url}?per_page=${perPageResultNum}&page=${pageNum}`;
+      core.debug(`releasePageUrl = ${releasePageUrl}`);
+
+      const releases = await fetch(releasePageUrl, {
+        method: "get",
+        header: header
+      })
+        .then((res) => {
+          core.debug(res.headers.raw());
+          return res;
+        })
+        .then((res) => {
+          if (!res.ok)
+            throw new Error(`Fail to fetch JSON from "${releasePageUrl}": HTTP ${res.status}.`);
+          return res;
+        })
+        .then((res) => res.json())
+        .catch((err) => {
+          throw new Error(`Fail to fetch JSON from "${releasePageUrl}": ${err}`);
+        });
+
+      for (const releaseIndex in releases) {
+        const release = releases[releaseIndex];
+        const assets = release["assets"];
+
+        for (const assetIndex in assets) {
+          const asset = assets[assetIndex];
+          const name = asset["name"];
+          core.debug(`[${releaseIndex}].assets[${assetIndex}].name: ${name}`);
+          const match = name.match(regex);
+
+          if (!match) {
+            core.debug("The filename does not meet the requirements.");
+            continue;
+          }
+
+          const groups = match["groups"];
+          const versionList = [
+            groups["version"],   // gyan.dev   
+            groups["version_n"], // BtbN
+            groups["version_N"]  // BtbN
+          ];
+          const commitId = groups["commit_id"]; // BtbN
+          const date = groups["date"]; // gyan.dev
+
+          if (findLatestSharedBuild) {
+            core.debug(`Found latest shared build: [${versionList}] [${commitId}] [${date}].`);
+            foundUrl = true;
+          } else {
+            if (allowedOptions.includes("version")) {
+              core.debug(`Version: [${versionList}] [${expectedVersion}]`);
+
+              if (versionList.includes(expectedVersion)) {
+                core.debug("Version matches.");
+                foundUrl = true;
+              } else {
+                core.debug("Version does not match.");
+                foundUrl = false;
+                continue;
+              }
+            }
+            if (allowedOptions.includes("commit_id")) {
+              core.debug(`Commit ID: [${commitId}] [${expectedcommitId}]`);
+
+              if (`[${commitId}]` === `[${expectedcommitId}]`) {
+                core.debug("Commit ID matches.");
+                foundUrl = true;
+              } else {
+                core.debug("Commit ID does not match.");
+                foundUrl = false;
+                continue;
+              }
+            }
+            if (allowedOptions.includes("date")) {
+              core.debug(`Build date: [${date}] [${expectedDate}]`);
+
+              if (`[${date}]` === `[${expectedDate}]`) {
+                core.debug("Build date matches.");
+                foundUrl = true;
+              } else {
+                core.debug("Build date does not match.");
+                foundUrl = false;
+                continue;
+              }
+            }
+          }
+
+          if (foundUrl) {
+            fileName = name;
+            packageDownloadUrl = asset["browser_download_url"];
+            core.debug(`[${releaseIndex}].assets[${assetIndex}].browser_download_url: ${packageDownloadUrl}`);
+            break;
+          }
+        }
+
+        if (foundUrl)
+          break;
+      }
+
+      if (foundUrl)
+        break;
     }
-    const body = await fetch(url)
-      .then((x) => x.buffer())
+
+    if (!foundUrl) {
+      throw new Error("Cannot find the url.");
+    } else {
+      core.info(`fileName: ${fileName}`);
+      core.info(`packageDownloadUrl: ${packageDownloadUrl}`);
+    }
+
+    fs.mkdirSync(resolvedTarget, {
+      recursive: true,
+    });
+    core.debug(`Target forder "${resolvedTarget}" created.`);
+
+    const buffer = await fetch(packageDownloadUrl)
+      .then((res) => {
+        core.debug(res.headers.raw());
+        return res;
+      })
+      .then((res) => {
+        if (!res.ok)
+          throw new Error(`Fail to download file from "${packageDownloadUrl}": HTTP ${res.status}.`);
+        return res;
+      })
+      .then((res) => res.buffer())
       .catch((err) => {
-        core.setFailed(`Fail to download file ${url}: ${err}`);
-        return undefined;
+        throw new Error(`Fail to download file from "${packageDownloadUrl}": ${err}`);
       });
-    if (body === undefined) return;
-    console.log("Download completed.");
-    const filename = getFilenameFromUrl(url);
-    fs.writeFileSync(path.join(target, filename), body);
-    console.log("File saved.");
-    core.setOutput("filename", filename);
+    core.info("Download completed.");
+
+    const filePath = path.join(resolvedTarget, fileName);
+    fs.writeFileSync(filePath, buffer);
+    core.info("File saved.");
+
+    core.setOutput("filename", fileName);
+    core.setOutput("filepath", filePath);
+
+    // The end.
   } catch (error) {
     core.setFailed(error.message);
   }

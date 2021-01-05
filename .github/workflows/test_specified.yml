@@ -1,0 +1,97 @@
+# This is a basic workflow to help you get started with Actions
+
+name: test_specified
+
+# Controls when the action will run.
+on:
+  # Triggers the workflow on push or pull request events but only for the master branch
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  test_specified:
+    continue-on-error: false
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # gyan.dev #############################
+          - provider: "gyan.dev"
+
+          - provider: "gyan.dev"
+            version: "4.3.1"
+
+          - provider: "gyan.dev"
+            build_date: "2020-10-01"
+          - provider: "gyan.dev"
+            build_date: "2020-11-19"
+          - provider: "gyan.dev"
+            build_date: "2021-01-01"
+
+          - provider: "gyan.dev"
+            version: "4.3.1"
+            build_date: "2020-10-01"
+          - provider: "gyan.dev"
+            version: "4.3.1"
+            build_date: "2020-11-19"
+          - provider: "gyan.dev"
+            version: "4.3.1"
+            build_date: "2021-01-01"
+
+          # gyan.dev #############################
+          - provider: "BtbN"
+
+          - provider: "BtbN"
+            version: "4.3.1"
+          - provider: "BtbN"
+            version: "100546"
+
+          - provider: "BtbN"
+            commit_id: "g89daac5fe2"
+          - provider: "BtbN"
+            commit_id: "g2c6f532e0a"
+
+          - provider: "BtbN"
+            version: "4.3.1"
+            commit_id: "g89daac5fe2"
+          - provider: "BtbN"
+            version: "100546"
+            commit_id: "g2c6f532e0a"
+            ######################################
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+
+      - uses: pzhlkj6612/actions-download-file@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          provider: ${{ matrix.provider }}
+          filename_version: ${{ matrix.version }}
+          filename_build_date: ${{ matrix.build_date }}
+          filename_commit_id: ${{ matrix.commit_id }}
+
+      - uses: pzhlkj6612/actions-download-file@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          provider: ${{ matrix.provider }}
+          filename_version: ${{ matrix.version }}
+          filename_build_date: ${{ matrix.build_date }}
+          filename_commit_id: ${{ matrix.commit_id }}
+          target: "./"
+
+      - uses: pzhlkj6612/actions-download-file@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          provider: ${{ matrix.provider }}
+          filename_version: ${{ matrix.version }}
+          filename_build_date: ${{ matrix.build_date }}
+          filename_commit_id: ${{ matrix.commit_id }}
+          target: "./downloadFFMPEG/"
+

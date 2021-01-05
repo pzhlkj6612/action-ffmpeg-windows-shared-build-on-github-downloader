@@ -1,21 +1,33 @@
 name: "Fetch and Save"
-description: "Fetch something from a URL, and save it in a directory"
+description: "Fetch something from a URL, and save it in a directory. Find the latest shared build if omit all 'filename_' parameters."
 inputs:
-  url:
-    description: "The url"
+  github_token:
+    description: "secrets.GITHUB_TOKEN"
     required: true
+  provider:
+    description: "FFmpeg provider. Allowed values: 'BtbN' or 'gyan.dev'."
+    required: true
+  filename_version:
+    description: "FFmpeg version. '4.3.1' for gyan.dev's and BtbN's build, '100546' for BtbN's build."
+    required: false
+    default: ""
+  filename_commit_id:
+    description: "FFmpeg build commit id, for BtbN's build. For example, 'g89daac5fe2'."
+    required: false
+    default: ""
+  filename_build_date:
+    description: "FFmpeg build date, for gyan.dev's build. For example, '2021-01-01'."
+    required: false
     default: ""
   target:
-    description: "Target file destination"
-    required: true
-    default: "."
-  auto-match:
-    description: 'Match the first URL from "url"'
+    description: "Target file destination. By default, it is the current working directory."
     required: false
-    default: "false"
+    default: "."
 outputs:
   filename:
     description: "Written file name"
+  filepath:
+    description: "Written file path"
 runs:
   using: node12
   main: dist/index.js
