@@ -31,13 +31,9 @@ jobs:
       - uses: actions/checkout@v2
 
       - uses: pzhlkj6612/actions-download-file@master
-        id: downloadFFMPEG
         with:
           provider: "${{ matrix.provider }}"
           filename_version: "${{ matrix.version }}"
           filename_build_date: "${{ matrix.build_date }}"
           filename_commit_id: "${{ matrix.commit_id }}"
           target: "."
-
-      - name: File name?
-        run: echo "${{ steps.downloadFFMPEG.outputs.filename }}"

@@ -5,11 +5,17 @@
     "node-fetch": "^2.6.1"
   },
   "devDependencies": {
-    "@zeit/ncc": "^0.22.3"
+    "@vercel/ncc": "^0.26.1",
+    "eslint": "^7.17.0",
+    "eslint-config-standard": "^16.0.2",
+    "eslint-plugin-import": "^2.22.1",
+    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-promise": "^4.2.1"
   },
   "name": "actions-download-file",
   "scripts": {
-    "build": "ncc build"
+    "build": "eslint index.js && ncc build",
+    "lint": "eslint --fix index.js"
   },
   "keywords": [
     "github",

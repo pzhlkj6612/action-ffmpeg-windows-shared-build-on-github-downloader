@@ -93,5 +93,14 @@ jobs:
           filename_version: ${{ matrix.version }}
           filename_build_date: ${{ matrix.build_date }}
           filename_commit_id: ${{ matrix.commit_id }}
+          target: "../"
+
+      - uses: pzhlkj6612/actions-download-file@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          provider: ${{ matrix.provider }}
+          filename_version: ${{ matrix.version }}
+          filename_build_date: ${{ matrix.build_date }}
+          filename_commit_id: ${{ matrix.commit_id }}
           target: "./downloadFFMPEG/"
 
