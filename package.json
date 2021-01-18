@@ -5,11 +5,15 @@
     "node-fetch": "^2.6.1"
   },
   "devDependencies": {
-    "@zeit/ncc": "^0.22.3"
+    "@types/jest": "^26.0.20",
+    "@zeit/ncc": "^0.22.3",
+    "jest": "^26.6.3",
+    "jest-when": "^3.1.0"
   },
   "name": "actions-download-file",
   "scripts": {
-    "build": "ncc build"
+    "build": "ncc build",
+    "test": "jest test/index.test.js"
   },
   "keywords": [
     "github",
