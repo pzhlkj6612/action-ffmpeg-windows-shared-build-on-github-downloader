@@ -33,7 +33,7 @@ const providers = {
   },
   'gyan.dev': {
     url: 'https://api.github.com/repos/GyanD/codexffmpeg/releases',
-    regex: /ffmpeg-(?<version>.+?)-(?<date>.+)-full_build-shared\.zip/,
+    regex: /ffmpeg-(?<version>.+?)(-(?<date>.+))?-full_build-shared\.zip/,
     allowedOptions: [
       'version',
       'date'
